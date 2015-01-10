@@ -1,19 +1,17 @@
 
 class bat:
-    def __hello(self, x):
-        y = 5 * x
-        return y
+    def __init__(self, myvar):
+        self.myvar = myvar
 
-    def go(self, k):
-        z = self.__hello(k)
+    x = 5
+
+    def go(self):
+        z = 5 * self.myvar * x
         return z
 
-e = bat()
+    self.go()
 
-n = e.go(3)
+g = bat(5)
+a = g.go()
 
-print(n)
-
-g = e.__hello(6)
-
-print(g)
+print(a)

@@ -45,66 +45,77 @@ if len(dmnd_hr) != len(prod_hr):
 
 # Battery model
 class battery:
-    def __init__(self, size, soc_min = 0.4, c_rate_d_max=0.05, c_rate_c_max=0.3, \
+    def __init__(self, size, type, soc_min = 0.4, c_rate_d_max=0.05, c_rate_c_max=0.3, \
                  cc_cv_trans_pt=0.8, eff_c=0.9, eff_d=0.9):
         self.size = size
-        self.__c_rate_c_max = c_rate_c_max
+        self.type = type
+        self.c_rate_c_max = c_rate_c_max
         self.__c_rate_d_max = c_rate_d_max
-        self.__c_trans_pt = cc_cv_trans_pt
-        self.__soc_min = soc_min
+        self.c_trans_pt = cc_cv_trans_pt
+        self.soc_min = soc_min
+        self.__md_types = ["full", "empty", "disch", "cv", "cc", "prc", "ldshd"]
 
-    # Constant current charge mode
-    # Inputs: battery soc (%) at beginning of hour, watts into battery, bat size, max C rate for charging
-    # Returns list of battery soc at end of hour, any excess energy not used (if w_in exceeds c_rate_c_max)
-    def __cc_charge(self, soc, w_in, sz, c_max):
-        results = [0, 0]
-        if w_in <= (c_max * sz):  # power in is less than maximum charge rate of bat
-            results[0] = soc + (float(w_in) / sz)
-        else:
-            results[0] = soc + c_max
-            results[1] = w_in - (c_max * sz)
-        return results
+    # Note on conventions
+    # Argument "w": "+" means battery could not use all energy given to it. "-" means it could not supply the neded energy.
 
-    # Constant voltage charge mode
-    # Inputs: battery soc (%) at beginning of hour, watts into battery, bat size, charging transition point (cc -> cv)
-    # Returns list of battery soc at end of hour, any excess energy not used (if w_in exceeds cv_rate)
-    def __cv_charge(self, soc, w_in, sz, c_trans_pt):
-        results = [0, 0]
-        cv_rate = -0.0025 + 0.0005/(soc - c_trans_pt) # asymptotically approach 0C rate as soc approaches 100% (hard coded assuming 80% transition point!)
-        if cv_rate > (w_in * sz):
-            results[0] = soc + (w_in * sz)
-        else:
-            results[0] = soc + cv_rate
-            results[1] = w_in - (cv_rate * sz)
-        results[0] = min(results[0], 1)
+    # Mode: battery full
+    # Input: watts into the battery
+    # Outputs: soc (100%), watts unused (= w since battery is full)
+    def bat_full(self, w):
+        return 1, w
 
-        return results
+    # Mode: battery empty
+    # Input: none
+    # Outputs: soc (0%), watts unused (= w since battery is empty)
+    def bat_empty(self, w):
+        return 0, w
 
-    # Discharge battery
+    # Mode: discharge battery
     # Inputs: bat soc (%), discharge watts, bat size (whr)
-    # Output: Bat soc after discharge for this hour
-    def __discharge(self, soc, w_out, sz):
-            result = soc + (float(w_out) / sz)
-            return result
+    # Output: Bat soc after discharge for this hour, unmet load (calc'd using shed() so set to 0 here)
+    def discharge(self, soc, w_out):
+            soc_new = max(soc + (float(w_out) / self.size), 0)
+            return soc_new, 0
 
-    # Determine charging mode
-    # Input: soc (%)
-    # Output: charging mode ("cc" or "cv")
-    def __c_mode(self, soc, c_trans_pt):
-        if soc > c_trans_pt:
-            c_mode = "cv"
+    # Mode: constant current charging
+    # Inputs: battery soc (%) at beginning of hour, watts into battery, bat size, max C rate for charging
+    # Outputs: battery soc at end of hour, any excess energy not used (if w_in exceeds c_rate_c_max)
+    def cc_charge(self, soc, w_in):
+        c_max = self.c_rate_c_max * self.size
+        if w_in <= c_max:  # power in is less than maximum charge rate of bat
+            soc_max = soc + (float(w_in) / self.size)
+            soc_new = min(soc_max, 1)
+            w_unused = (max(soc_max, 1) - 1) * self.size # if 100% exceeded, determine unused energy
         else:
-            c_mode = "cc"
-        return c_mode
+            soc_new = soc + self.c_rate_c_max
+            w_unused = w_in - c_max
+
+        return soc_new, w_unused
+
+    # Mode: constant voltage charging
+    # Inputs: battery soc (%) at beginning of hour, watts into battery, bat size, charging transition point (cc -> cv)
+    # Outputs: battery soc at end of hour, any excess energy not used (if w_in exceeds cv_rate)
+    def cv_charge(self, soc, w_in):
+        cv_rate = -0.0025 + 0.0005/(soc - self.c_trans_pt) # asymptotically approach 0C rate as soc approaches 100% (hard coded assuming 80% transition point!)
+        c_rate = float(w_in) / self.size # the current charging rate assuming all watts are used
+        if cv_rate > c_rate: # the maximum possible charging rate (cv_rate) is > than current c rate
+            soc_max = soc + c_rate
+            soc_new = min(soc_max, 1)
+            w_unused = (max(soc_max, 1) - 1) * self.size # if 100% soc is exceeded, determine the unused energy
+        else:
+            soc_new = soc + cv_rate
+            w_unused = w_in - (cv_rate * self.size)
+
+        return soc_new, w_unused
 
     # Algorithm for determining which households to load shed
     # Inputs: Total load on the bat (int), the percent of the total load this hour to shed,
-    #         hh_lds w/% of total load & bid (dict)
+    #         hh_lds w/% of total load & bid (dict) ie {1: [10, .5], 2: [5, .5]}
     # Output: households disconnected, total load disconnected
     # Note: unlike in real life, there is no "reconnect" setpoint. Just evaluate energy debt each hr, d/c as needed
-    def __shed(self, load, shd_pct, hh_lds):
+    def shed(self, load, shd_pct, hh_lds):
         hh_dsctd = []
-        hh_srtd = sorted(hh_lds, key=hh_lds.__getitem__) # (key) household identifiers sorted from lowest bid to highest
+        hh_srtd = sorted(hh_lds, key=hh_lds.__getitem__) # (keys) household identifiers sorted from lowest bid to highest
         bids_srtd = sorted(hh_lds.values()) # [bid, ld%] sorted from lowest to highest bid
         ld_shd = 0
         i = 0
@@ -117,7 +128,50 @@ class battery:
 
         return hh_dsctd, ld_shd
 
+    # Determine the battery operating mode for this hour
+    # Inputs:  bat soc, difference b/w energy produced/consumed this hr (pos is produced), bat type (master / slave)
+    # Outputs: battery operating mode (string)
+    def bat_mode(self, soc, bal):
+        if bal > 0 and soc >= 1:
+            mode = self.__md_types[0] # full
+        elif bal < 0 and soc <= 0:
+            mode = self.__md_types[1] # empty
+        elif bal < 0 and soc > self.soc_min:
+            mode = self.__md_types[2] # discharge
+        elif bal > 0 and soc >= self.c_trans_pt:
+            mode = self.__md_types[3] # cv
+        elif bal > 0 and soc > self.soc_min and soc < self.c_trans_pt:
+            mode = self.__md_types[4] # cc
+        elif soc <= self.soc_min and self.type == "m":
+            mode = self.__md_types[5] # purchase
+        elif soc <= self.soc_min and self.type == "s":
+            mode = self.__md_types[6] # ldshd
 
+        return mode
+
+"""
+    def bat_soc(self, prod, ld, hh_lds, soci):
+        simhrs = len(prod)
+        bat_actions = {self.__md_types[0]:}
+        self.soc = [soci] + [0 for x in range(simhrs)] # initialize the state of charge array (%)
+        self.soc_w = [soci * self.size] + [0 for x in range(simhrs)] # soc in watts
+        self.c_mode_hr = ["cc"] + ["" for x in range(simhrs)] # bool, can be 'cc' or 'cv'
+        self.state = ["ON"] + ["" for x in range(simhrs)]
+        self.balance = [0 for x in range(simhrs)] # list containing the hourly difference between production and load
+        self.hh_lds = hh_lds
+        self.hh_dsctd_hr = [[] for x in range(simhrs)]
+        self.ld_shd_hr = [0 for x in range(simhrs)]
+
+        for i in range(simhrs):
+            bal = prod - ld
+            self.balance[i] = bal
+            mode = self.__bat_mode(self.soc[i], bal, self.type)
+
+
+
+
+# Master battery class. Used for defining the attributes and behavior of the master battery
+class mbat(battery):
 
     # Calculates the battery state of charge (soc) at every hour of the simulation period
     # Inputs: list of hourly solar production and load (watts)
@@ -126,7 +180,7 @@ class battery:
         simhrs = len(prod)
         self.soc = [soci] + [0 for x in range(simhrs)] # initialize the state of charge array (%)
         self.soc_w = [soci * self.size] + [0 for x in range(simhrs)] # soc in watts
-        self.c_mode = ["cc"] + ["" for x in range(simhrs)] # bool, can be 'cc' or 'cv'
+        self.c_mode_hr = ["cc"] + ["" for x in range(simhrs)] # bool, can be 'cc' or 'cv'
         self.state = ["ON"] + ["" for x in range(simhrs)]
         self.balance = [0 for x in range(simhrs)] # list containing the hourly difference between production and load
         self.hh_lds = hh_lds
@@ -141,32 +195,32 @@ class battery:
                 if self.soc[i] <= 0: # Disconnect all hh's if battery soc drops to 0
                     self.soc[i+1] = self.soc[i]
                     self.hh_dsctd_hr = range(1, len(hh_lds)+1)
-                if self.soc[i] <= self.__soc_min: # battery soc at or below min
+                if self.soc[i] <= self.soc_min: # battery soc at or below min
                     # Try to make up for deficit by purchasing power from third-party producers
 
 
-                    shd_pct = ((self.__soc_min - self.soc[i]) * self.size) / abs(bal)
-                    hh_dsctd, ld_shd = self.__shed(abs(bal), shd_pct, hh_lds)
+                    shd_pct = ((self.soc_min - self.soc[i]) * self.size) / abs(bal)
+                    hh_dsctd, ld_shd = self.shed(abs(bal), shd_pct, hh_lds)
                     self.soc[i+1] = self.soc[i] + ((ld_shd + bal) / self.size)
                     self.hh_dsctd_hr[i] = hh_dsctd
                     self.ld_shd_hr[i] = ld_shd
                 #if abs(bal) > self.__c_rate_d_max:
                     # discharge rate exceeds max allowed, therefore load shedding
                 else: # discharge battery
-                    rslt = self.__discharge(self.soc[i], bal, self.size)
+                    rslt = self.discharge(self.soc[i], bal, self.size)
                     self.soc[i+1] = rslt
             # Constant current battery charging
-            elif self.__c_mode(self.soc[i], self.__c_trans_pt) == "cc":
-                rslt = self.__cc_charge(self.soc[i], bal, self.size, self.__c_rate_c_max)
+            elif self.c_mode(self.soc[i], self.c_trans_pt) == "cc":
+                rslt = self.cc_charge(self.soc[i], bal, self.size, self.c_rate_c_max)
                 self.soc[i+1] = rslt[0]
-                self.c_mode[i+1] = "cc"
+                self.c_mode_hr[i+1] = "cc"
             # Constant voltage battery charging
-            elif self.__c_mode(self.soc[i], self.__c_trans_pt) == "cv":
-                rslt = self.__cv_charge(self.soc[i], bal, self.size, self.__c_trans_pt)
+            elif self.c_mode(self.soc[i], self.c_trans_pt) == "cv":
+                rslt = self.cv_charge(self.soc[i], bal, self.size, self.c_trans_pt)
                 self.soc[i+1] = rslt[0]
-                self.c_mode[i+1] = "cv"
+                self.c_mode_hr[i+1] = "cv"
             # Set battery state
-            if self.soc[i] >= self.__soc_min:
+            if self.soc[i] >= self.soc_min:
                 self.state[i+1] = "ON"
             else:
                 self.state[i+1] = "OFF"
@@ -180,23 +234,23 @@ for i in range(0,len(prod_hr)):
     prod_hr[i] = prod_hr[i] * prod_scl
 
 # Create batteries
-bat1 = battery(60000)
+bat1 = mbat(60000)
 bat1.bat_soc(prod_hr, dmnd_hr, hh_dmnd, .7)
-bat2 = battery(60000)
-bat2.bat_soc(prod_hr, dmnd_hr, hh_dmnd, 0.7)
+#bat2 = battery(60000)
+#bat2.bat_soc(prod_hr, dmnd_hr, hh_dmnd, 0.7)
 
-batteries = [bat1, bat2]
+#batteries = [bat1, bat2]
 
 # Text output
 print(bat1.hh_dsctd_hr)
-"""print("Solar production:       " + str(prod_hr))
+""""""print("Solar production:       " + str(prod_hr))
 print("Demand:                 " + str(dmnd_hr))
 print("Diff bw prod/load:      " + str(bat1.balance))
 print("Battery state (w):      " + str(bat1.soc_w[1:]))
 print("Battery SoC (%):        " + str(bat1.soc[1:]))
 print("Battery state (on/off): " + str(bat1.state[1:]))
 print("Battery charge mode:    " + str(bat1.c_mode[1:]))
-"""
+""""""
 
 # PLOTTING
 plt_hrs = 167
@@ -216,3 +270,4 @@ ax3.plot(range(0,plt_hrs), prod_hr[:plt_hrs], range(0,plt_hrs), dmnd_hr[:plt_hrs
 ax3.set_xlabel('Time (hrs)')
 ax3.set_ylabel('Power (Watts)')
 plt.show()
+"""
