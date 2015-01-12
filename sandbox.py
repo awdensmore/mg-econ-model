@@ -1,17 +1,9 @@
 
-class bat:
-    def __init__(self, myvar):
-        self.myvar = myvar
+def px(x, y = None):
+    print(x)
+    if y:
+        print(y)
 
-    x = 5
+px(5)
+px(5,4)
 
-    def go(self):
-        z = 5 * self.myvar * x
-        return z
-
-    self.go()
-
-g = bat(5)
-a = g.go()
-
-print(a)
