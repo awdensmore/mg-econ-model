@@ -114,71 +114,106 @@ class battery:
     # Inputs: Load on the bat from hh's, the percent of the hh load this hour to shed,
     #         hh_lds w/% of hh load & bid (dict) ie {1: [10, .5], 2: [5, .5]}
     #         ex_ld = excess load: if a slave battery, the load demanded by the master battery
-    # Output: households disconnected, total load disconnected
+    # Output: new bat soc, total load shed, unmet load (can happen when load demanded by master bat exceeds
+    #         this bat's capacity), hh's disconnected
     # Note: unlike in real life, there is no "reconnect" setpoint. Just evaluate energy debt each hr, d/c as needed
-    def shed(self, soc, hh_ld, shd_pct, hh_lds, ex_ld=0):
-        if hh_ld or ex_ld > 0:
+    def shed(self, soc, prod, hh_ld, hh_lds, ex_ld=0):
+        if (hh_ld or ex_ld) > 0:
             exit("loads must be negative, otherwise bat is charging")
         else:
             load = -hh_ld
-            ex_ld = -ex_ld
+        ld_shd_t =  max(0, abs(hh_ld + ex_ld) - (prod - ((self.soc_min - soc) * self.size)))  # the target load to be shed
+        print("ld_shd_t = " + str(ld_shd_t))
+        if ld_shd_t >= hh_ld:
+            hh_shd_pct = 1 # The load shedding required exceeds all hh loads, therefore disconnect all hh's
+        else:
+            hh_shd_pct = ld_shd_t / abs(hh_ld)
+
         hh_dsctd = []
         hh_srtd = sorted(hh_lds, key=hh_lds.__getitem__) # (keys) household identifiers sorted from lowest bid to highest
         bids_srtd = sorted(hh_lds.values()) # [bid, ld%] sorted from lowest to highest bid
         ld_shd = 0
         i = 0
-        while ld_shd < (load * shd_pct):  # disconnect hh's until the required shedding threshold is reached
-            ld_shd = load * bids_srtd[i][1] + ld_shd
+        while ld_shd < (ld_shd_t): #abs(hh_ld) * hh_shd_pct):  # disconnect hh's until the required shedding threshold is reached
+            ld_shd = abs(hh_ld) * bids_srtd[i][1] + ld_shd
             hh_dsctd.append(hh_srtd[i])
             i = i + 1
             if i == len(hh_lds):
                 break
-        soc_new = soc - ((ld_shd - load) / self.size)
 
-        return soc_new, ld_shd, hh_dsctd
+        bat_ld_unmet = max(0, min(abs(ex_ld), ld_shd_t - ld_shd)) # the amount of master battery load that could not be met
 
-a = battery(10000, "m")
-print(a.shed(0.5, -1000, .5, {1:[3,.25],2:[5,.1],3:[2,.45],4:[10,.2]}))
-"""
+        soc_new = soc + (float((prod + ld_shd + bat_ld_unmet + hh_ld + ex_ld)) / self.size)
+        #if soc_new < 0:
+        #    ld_unmet = -(soc_new * self.size)
+        #    soc_new = 0
+
+        return soc_new, ld_shd, bat_ld_unmet, hh_dsctd
+
+#a = battery(10000, "s")
+#print(a.shed(0.3, 5000, -3000, {1:[5,0.2],2:[10,0.1],3:[8,0.15],4:[1,0.1],5:[12,0.25],6:[3,.2]},-2000))
+
     # Determine the battery operating mode for this hour
     # Inputs:  bat soc, difference b/w energy produced/consumed this hr (pos is produced), bat type (master / slave)
     # Outputs: battery operating mode (string)
     def bat_mode(self, soc, bal):
         if bal > 0 and soc >= 1:
             mode = self.md_types[0] # full
-        elif bal < 0 and soc <= 0:
+        elif bal <= 0 and soc <= 0:
             mode = self.md_types[1] # empty
-        elif bal < 0 and soc > self.soc_min:
+        elif bal <= 0 and soc > self.soc_min:
             mode = self.md_types[2] # discharge
         elif bal > 0 and soc > self.c_trans_pt:
             mode = self.md_types[3] # cv
-        elif bal > 0 and soc > self.soc_min and soc <= self.c_trans_pt:
+        elif bal >= 0 and soc > self.soc_min and soc <= self.c_trans_pt:
             mode = self.md_types[4] # cc
         elif soc <= self.soc_min and self.type == "m":
             mode = self.md_types[5] # purchase
         elif soc <= self.soc_min and self.type == "s":
-            mode = self.md_types[6] # ldshd
+            if (bal / self.size) + soc > self.soc_min: # soc will be > soc_min after this hr, tf just cc charge
+                mode = self.md_types[4] # cc
+            else:
+                mode = self.md_types[6] # ldshd
 
         return mode
 
     bat_action = {"full": bat_full, "empty": bat_empty, "disch": discharge, "cv": cv_charge,\
                    "cc": cc_charge, "ldshd": shed}
 
+#a = battery(10000, "s")
+#print(a.bat_mode(0.85, 1000))
+
+"""class test(battery):
+    a = 5
+
+    def yo(self, soc, bal):
+        t = self.bat_mode(soc, bal)
+        return t
+
+t = test(10000, "s")
+print(t.yo(0.85,100))"""
+
 class control(battery):
     # Init with instances of all batteries in the micro-grid
-    def __init__(self, batteries):
-        bats = self.batteries
+    #def __init__(self, batteries):
+    #    self.bats = batteries
 
     # Returns the battery state of charge for this hour
-    def bat_soc(self, soc, bal, shd_pct=None, hh_lds=None):
+    def bat_soc(self, soc, prod, hh_ld, hh_lds=None, ex_ld=0):
+        bal = prod + hh_ld + ex_ld
         md = self.bat_mode(soc, bal)
+        print(md)
 
-        if md == self.md_types[6]:
-            soc_new, ld_shd, hh_dsctd = self.bat_action[md](self, soc, bal, shd_pct, hh_lds)
+        if md == self.md_types[6]: # load shed
+            soc_new, ld_shd, bat_ld_unmet, hh_dsctd = self.bat_action[md](self, soc, prod, hh_ld, hh_lds=None, ex_ld=0)
             return soc_new, ld_shd, hh_dsctd
         else:
             soc_new, w_unused = self.bat_action[md](self, soc, bal)
             return soc_new, w_unused
+
+#b = battery(10000, "s")
+#c = control(10000, "s")
+#print(c.bat_soc(0.85, 5000, -1000, {1:[5,0.2],2:[10,0.1],3:[8,0.15],4:[1,0.1],5:[12,0.25],6:[3,.2]},-2000))
 
     # Run the simulation
     # Inputs: soci - array of the initial state of charge for all batteries (len = # of bats)
@@ -189,10 +224,10 @@ class control(battery):
         if len(prod) - len(load) != 0:
             exit("simhrs don't match")
         else:
-        simhrs = len(prod)
+            simhrs = len(prod)
 
 """
-"""
+
     def bat_soc(self, prod, ld, hh_lds, soci):
         simhrs = len(prod)
         bat_actions = {self.__md_types[0]:}
