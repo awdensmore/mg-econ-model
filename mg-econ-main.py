@@ -1,4 +1,6 @@
 #!/usr/bin env python
+# Copyright 2015 Alex Densmore
+# Licensed under GNU GPL v3.0 (see license.txt in repository)
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -45,10 +47,11 @@ if len(dmnd_hr) != len(prod_hr):
 
 # Battery model
 class battery:
-    def __init__(self, size, type, soc_min = 0.4, c_rate_d_max=0.05, c_rate_c_max=0.3, \
+    def __init__(self, size, type, soc_min = 0.4, soci=0.7, c_rate_d_max=0.05, c_rate_c_max=0.3, \
                  cc_cv_trans_pt=0.8, eff_c=0.9, eff_d=0.9):
         self.size = size
         self.type = type
+        self.soci = soci
         self.c_rate_c_max = c_rate_c_max
         self.__c_rate_d_max = c_rate_d_max
         self.c_trans_pt = cc_cv_trans_pt
@@ -73,7 +76,7 @@ class battery:
         return soc_new, w
 
     # Mode: discharge battery
-    # Inputs: bat soc (%), discharge watts, bat size (whr)
+    # Inputs: bat soc (%), discharge watts (negative number), bat size (whr)
     # Output: Bat soc after discharge for this hour, unmet load (calc'd using shed() so set to 0 here)
     def discharge(self, soc, w_out):
             soc_new = max(soc + (float(w_out) / self.size), 0)
@@ -82,6 +85,7 @@ class battery:
     # Mode: constant current charging
     # Inputs: battery soc (%) at beginning of hour, watts into battery, bat size, max C rate for charging
     # Outputs: battery soc at end of hour, any excess energy not used (if w_in exceeds c_rate_c_max)
+    # !!UPGRADE THIS METHOD TO INCLUDE THE CC/CV TRANSITION IF IT OCCURS MID-HOUR!!!
     def cc_charge(self, soc, w_in):
         c_max = self.c_rate_c_max * self.size
         if w_in <= c_max:  # power in is less than maximum charge rate of bat
@@ -123,7 +127,6 @@ class battery:
         else:
             load = -hh_ld
         ld_shd_t =  max(0, abs(hh_ld + ex_ld) - (prod - ((self.soc_min - soc) * self.size)))  # the target load to be shed
-        print("ld_shd_t = " + str(ld_shd_t))
         if ld_shd_t >= hh_ld:
             hh_shd_pct = 1 # The load shedding required exceeds all hh loads, therefore disconnect all hh's
         else:
@@ -144,9 +147,6 @@ class battery:
         bat_ld_unmet = max(0, min(abs(ex_ld), ld_shd_t - ld_shd)) # the amount of master battery load that could not be met
 
         soc_new = soc + (float((prod + ld_shd + bat_ld_unmet + hh_ld + ex_ld)) / self.size)
-        #if soc_new < 0:
-        #    ld_unmet = -(soc_new * self.size)
-        #    soc_new = 0
 
         return soc_new, ld_shd, bat_ld_unmet, hh_dsctd
 
@@ -180,54 +180,128 @@ class battery:
     bat_action = {"full": bat_full, "empty": bat_empty, "disch": discharge, "cv": cv_charge,\
                    "cc": cc_charge, "ldshd": shed}
 
-#a = battery(10000, "s")
-#print(a.bat_mode(0.85, 1000))
-
-"""class test(battery):
-    a = 5
-
-    def yo(self, soc, bal):
-        t = self.bat_mode(soc, bal)
-        return t
-
-t = test(10000, "s")
-print(t.yo(0.85,100))"""
-
 class control(battery):
     # Init with instances of all batteries in the micro-grid
-    #def __init__(self, batteries):
-    #    self.bats = batteries
+    def __init__(self, batteries):
+        self.batteries = batteries
+        self.sbats = []
+        m = 0
+        for b in batteries:
+            if b.type == "m":
+                m = m+1
+                self.mbat = b
+            else:
+                self.sbats.append(b)
+        if m != 1:
+            exit("There must be 1 and only 1 master battery")
 
     # Returns the battery state of charge for this hour
-    def bat_soc(self, soc, prod, hh_ld, hh_lds=None, ex_ld=0):
+    # Inputs: bat - an instance of battery class, bat soc at this hr, solar prod this hr, total hh this hour,
+    #         dict with hh bids & load % (provide if load shedding), excess load (if a master bat requires from slave)
+    def bat_soc(self, bat, soc, prod, hh_ld, hh_lds=None, ex_ld=0):
         bal = prod + hh_ld + ex_ld
-        md = self.bat_mode(soc, bal)
-        print(md)
+        md = bat.bat_mode(soc, bal)
 
-        if md == self.md_types[6]: # load shed
-            soc_new, ld_shd, bat_ld_unmet, hh_dsctd = self.bat_action[md](self, soc, prod, hh_ld, hh_lds=None, ex_ld=0)
-            return soc_new, ld_shd, hh_dsctd
+        if md == bat.md_types[6]: # load shed
+            soc_new, ld_shd, bat_ld_unmet, hh_dsctd = bat.bat_action[md](bat, soc, prod, hh_ld, hh_lds, ex_ld)
+            return md, soc_new, ld_shd, bat_ld_unmet, hh_dsctd
         else:
-            soc_new, w_unused = self.bat_action[md](self, soc, bal)
-            return soc_new, w_unused
-
-#b = battery(10000, "s")
-#c = control(10000, "s")
-#print(c.bat_soc(0.85, 5000, -1000, {1:[5,0.2],2:[10,0.1],3:[8,0.15],4:[1,0.1],5:[12,0.25],6:[3,.2]},-2000))
+            soc_new, w_unused = bat.bat_action[md](bat, soc, bal)
+            return md, soc_new, w_unused
 
     # Run the simulation
-    # Inputs: soci - array of the initial state of charge for all batteries (len = # of bats)
+    # Inputs: bats - list of battery class instances provided at initialization
     #         prod - array of hourly solar production (len = # of simulation hours)
     #         load - matrix of the hourly load on each bat (ie [[bat1, bat2,..., batx], ...hrx])
     #         hh_lds - dict describing hh loads (ie {1:[bid, ld %], ...hhx})
-    def run(self, soci, prod, load, hh_lds):
+    # Notes:  1)
+    def run(self, prod, load, hh_lds):
         if len(prod) - len(load) != 0:
             exit("simhrs don't match")
         else:
             simhrs = len(prod)
 
-"""
+        sizes = [self.mbat.size] + [a.size for a in self.sbats] # Size of each battery
+        soc_min = [self.mbat.soc_min] + [a.soc_min for a in self.sbats]
+        soc = [[self.mbat.soci] + [a.soci for a in self.sbats]] # initialize the matrix of hourly battery soc (%)
+        soc_w = [[c * s for c,s in zip(sizes, soc[0])]] # initialize the matrix of hourly battery soc (watts)
+        #w_avail = [a - (b.size * b.soc_min) for a,b in zip(soc_w[1:],self.sbats)] # matrix of watts avail from sbats
 
+        # Outputs
+        self.mode = []
+        self.soc = []
+        self.soc_w = []
+
+        # !!!THE WHOLE SHEBANG!!!
+        bal = []
+        w_unused_hr = []
+        for i in range(simhrs):
+            bal.append(prod[i] - load[i])
+            md = self.mbat.bat_mode(soc[i][0], bal[i])
+            if md == self.mbat.md_types[6]: # load shed
+                # do something
+                x = 5
+            elif md == self.mbat.md_types[5]: # try to purchase enough energy to return to soc_min
+                w_avail = [a - (b * c) for a,b,c in zip(soc_w[i][1:], soc_min[1:], sizes[1:])] # determine the watts available from slave batteries
+                w_needed = ((soc_min[0] - soc[i][0]) * sizes[0]) - bal[i] # watts needed to bring mbat to soc_min
+                soc_new_m = soc[i][0] # initialize the new mbat soc to current soc
+                soc_new_s = soc[i][1:] # inialize new sbat soc's to current soc's
+                j = 0
+                for b in w_avail: # Cycle through sbats until load is met or sbats are all discharged
+                    print(str(b) + " " + str(w_needed))
+                    w_disch = min(b, w_needed)
+                    soc_new_s[j], w_unused = self.sbats[j].discharge(soc_new_s[j], -w_disch) # discharge sbat
+                    soc_new_m, w_unused = self.mbat.cc_charge(soc_new_m, (w_disch - w_unused)) # charge mbat
+                    w_needed = w_needed - w_disch + w_unused
+                    print(w_needed)
+                    if w_needed <= 0:
+                        break
+                    j = j + 1
+                if w_needed > 0: # energy purchasing was insufficient, begin load shedding
+
+            else: # full, empty, charging and discharging
+                soc_new_m, w_unused = self.mbat.bat_action[md](self.mbat, soc[i][0], bal[i])
+                #print(w_unused)
+                soc_new_s = []
+                if w_unused == 0: # no change in soc for slave batteries
+                    k = 0
+                    for s in self.sbats:
+                        soc_new_s.append(soc[i][k+1])
+                else: # Cycle through slave batteries, charging them until no energy is left
+                    j = 0
+                    while w_unused > 0:
+                        #soc_new_s = []
+                        md = self.sbats[j].bat_mode(soc[i][j+1], w_unused)
+                        soc_j, w_unused = self.sbats[j].bat_action[md](self.sbats[j], soc[i][j+1], w_unused)
+                        soc_new_s.append(soc_j)
+                        j = j+1
+                        if j == len(self.sbats): #
+                            break;
+                    if j < len(self.sbats):
+                        soc_new_s.append(soc[i][j+1])
+                        j = j +1 # this looks wrong! j+1 is also above
+
+            soc_new = [soc_new_m] + soc_new_s
+            soc.append(soc_new)
+            soc_w.append([a * b for a,b in zip(soc_new, sizes)])
+            w_unused_hr.append(w_unused)
+            self.mode.append(md)
+
+        self.soc = soc[1:]
+        self.soc_w = soc_w[1:]
+        return soc[1:], w_unused_hr
+
+
+a = battery(5000, "s")
+b = battery(5000, "s")
+d = battery(3000, "s")
+c = battery(10000, "m")
+m = control([a,b,c,d])
+m.run([1000,2000,2000, 2000],[4000,3000,3000,2100],{1:[5,0.2],2:[10,0.1],3:[8,0.15],4:[1,0.1],5:[12,0.25],6:[3,.2]})
+print(m.soc)
+print(m.soc_w)
+print(m.mode)
+"""
     def bat_soc(self, prod, ld, hh_lds, soci):
         simhrs = len(prod)
         bat_actions = {self.__md_types[0]:}
