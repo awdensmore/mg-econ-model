@@ -1,6 +1,6 @@
 __author__ = 'adensmore'
 
-import matplotlib.pyplot as plt
+"""import matplotlib.pyplot as plt
 import numpy as np
 
 fig, ax1 = plt.subplots()
@@ -15,5 +15,9 @@ for t1 in ax1.get_yticklabels():
 ax2 = ax1.twinx()
 s2 = np.sin(2*np.pi*t)
 ax2.plot(t,s2,'r-')
+"""
+class yo:
+    def hi(self,d):
+        return d
 
-plt.show()
+#plt.show()
