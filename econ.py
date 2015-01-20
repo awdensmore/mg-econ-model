@@ -26,6 +26,19 @@ def hh_consumption(hh_info, hh_dsctd, demand):
 
     return hh_load, hh_ul
 
+def price(p_nom, p_delta, soc, soc_max, soc_min):
+    # If current soc exceeds max/min for price calc, set it to max or min so price doesn't
+    # exceed threshold
+    if soc >= soc_max:
+        soc = soc_max
+    elif soc <= soc_min:
+        soc = soc_min
+
+    soc_avg = (soc_max + soc_min) / 2
+    p = p_nom * (1 - p_delta * (float(soc) - soc_avg)/(soc_avg - soc_min))
+
+    return p
+
 # Determine the hourly consumer price of electricity
 # Inputs: p_nom - nominal price of electricity, i.e. when production and supply are equal
 #         p_delta - the maximum allowable % change in the price of electricity
@@ -38,14 +51,14 @@ def hh_consumption(hh_info, hh_dsctd, demand):
 #         dependent only on past behavior.
 #         ALTERNATE - use bat soc. Low soc = high price, high soc = low price
 # Output: A list of the hourly price of electricity
-def price(p_nom, p_delta, bal):
+def price2(p_nom, p_delta, prod, demand):
+    bal = [p - d for p,d in zip(prod,demand)]
     b_min = min(bal)
     b_avg = np.average(bal)
     p = []
     for b in bal:
         p_i = p_nom * (1 - p_delta * (float(b) - b_avg)/(b_avg - b_min))
         p.append(p_i)
-
     return p
 
 # Bill each hh
