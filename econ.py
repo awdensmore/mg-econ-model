@@ -63,6 +63,7 @@ def price2(p_nom, p_delta, prod, demand):
 
 # Bill each hh
 # Inputs: the load from each hh. The hourly price of electricity
+# Output: dict with the bill for each hh during the simulation period
 def hh_billing(hh_load, prices):
     hh_billing = {}
     for key in hh_load.keys():
@@ -76,7 +77,7 @@ def hh_billing(hh_load, prices):
 # Determine the hourly net charging / discharging for slave batteries ("+" = charging, "-" = discharging)
 # Inputs: bat_net_w = [[hr1, hr2, ..., hrx], ... [bx]]. Net charge/discharge for each slave bat (sorted from lowest bid
 #                     highest.
-#         sbats = list of battery objects.
+#         sbats = list of battery objects. Order must be the same as the user's input
 #         c_rate = the billing rate for the micro-grid to recharge slave batteries (same for all)
 # Output: billings = "-" means money paid to the slave battery, "+" means money billed to the slave battery
 def sbat_billing(bat_net_w, sbats, c_rate):
