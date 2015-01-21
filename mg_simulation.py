@@ -1,4 +1,5 @@
 import mg_econ_main as main
+import numpy as np
 import econ
 
 # Inputs - Households and the grid
@@ -13,17 +14,20 @@ mg = main.control([a,e,c,d,b])
 
 # Inputs - Loads, production, pricing, simulation length
 scale_p = 1
-scale_d = 1.3
+scale_d = 1.7
 period = 31 # length of simulation in days
-p_nom = 1 # Nominal price of electricity
+global p_start
+p_start = 1 # Starting price of electricity
 global p_delta
 p_delta = 0.2 # maximum daily price change (e.g. +/- 50%)
 p_d_p = 0.2 # max change in price between periods (e.g. +/- 20%)
-elast_d = 0.05 # elasticity of demand (e.g., for 1% change in price, 5% change in demand
+elast_d = -0.5 # elasticity of demand (e.g., for 1% increase in price, 0.5% decrease in demand
 prod, demand = main.read_files("production.txt", "demand.txt")
-#prod, demand = main.scale(prod, scale_p, demand, scale_d)
-out_lbls = ["soc", "soc_w", "bal", "mode", "hh_dsctd", "ul", "p"]
-hourly_output = dict.fromkeys(out_lbls, [])
+prod, demand = main.scale(prod, scale_p, demand, scale_d)
+hrly_lbls = ["soc", "soc_w", "bal", "mode", "hh_dsctd", "ul", "ulpr", "p"]
+hourly_output = dict.fromkeys(hrly_lbls, [])
+per_lbls = ["ulw", "ulp", "avg_p"]
+per_output = dict.fromkeys(per_lbls, [])
 
 # One simulation period
 def sim1(prod, demand, p_nom, soci=[]):
@@ -44,27 +48,49 @@ def sim1(prod, demand, p_nom, soci=[]):
 
     return ul_hrs, prc_ul
 
-def mainsdf():
+def simyr():
     simhrs = len(prod) # Length of each simulation sub-period
     hr = 0
     sd = 1
+    p_nom = p_start
+    soci = []
     while hr < simhrs:
         hr_max = min(len(prod) - hr, period*24)
         prod1 = prod[hr:hr+hr_max]
         dmnd1 = demand[hr:hr+hr_max]
         prod1, dmnd1 = main.scale(prod1, scale_p, dmnd1, sd)
-        ulw, ulp = sim1(prod1, dmnd1, p_nom)
-        print(ulw, ulp)
+        ulw, ulp = sim1(prod1, dmnd1, p_nom, soci)
 
-        # Assume that load needs to be reduced by same % as unmet load %
-        # i.e., demand scale = ulp / elast_d
-        sd = 1 - (float(ulp) / elast_d) / 100
+        # Save outputs
+        per_output["ulw"] = per_output["ulw"] + [ulw]
+        per_output["ulp"] = per_output["ulp"] + [ulp]
+        per_output["avg_p"] = per_output["avg_p"] + [np.average(mg.p)]
+
+        # Scale demand and price of electricity
+        # Raise price of electricity by (Y * unmet load). If unmet load = 0, lower prices by 10%
+        Y = 2
+        if ulp > 0:
+            p_new = p_nom * (1 + Y*ulp)
+        else:
+            p_new = p_nom * (1 - 0.1)
+
+        # Assume that demand is reduced proportional to the elasticity of demand
+        delta = elast_d * (p_new - p_nom) / p_nom
+        sd = sd + delta
+
+        # Set parameters for next simulation period
+        p_nom = p_new
+        soci = mg.soc[-1]
         hr = hr + hr_max
+        print(ulp, p_new, sd)
 
 
-mainsdf()
+simyr()
+#sd = 1
+#el = -0.5
+#pn = 0.95
+#po = 1
+#delta = el * (pn - po) / po
+#sd = sd + delta
 
-
-#simhrs = min(len(prod), period*24) # Length of each simulation sub-period
-#prod, demand = prod[:simhrs], demand[:simhrs]
-
+#print(sd)
