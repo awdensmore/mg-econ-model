@@ -10,7 +10,7 @@ var = elds
 
 results = []
 for i in range(len(var)):
-    ry, rp = sim.simyr(elds[i], 1)
+    ry, rp = sim.simyr(eld=var[i], sd=0.5)
     results.append(ry)
 
 rplot = [[] for a in results[0]]
@@ -23,20 +23,8 @@ for key in results[0].keys():
 #for i in rplot:
 #    print(i)
 
-print(rp["avg_p"])
-
 # Plot
-#plt.plot_pd(sim.prod, sim.demand)
-plt.plot_prices(rp["avg_p"])
-#plt.plot_hd(rplot[4])
-if var == elds:
-    plt.plot_rev(rplot, elds)
-    plt.show()
-    plt.plot_hd(rplot, elds)
-    plt.show()
-if var == sd:
-    #plt.plot_rev(rplot, sd)
-    plt.plot_hd(rplot, sd)
-
+plt.plot_hd(rplot, var)
+#plt.plot_rev(rplot, var)
 plt.show()
 

@@ -4,7 +4,7 @@ import econ
 
 # Inputs - Households and the grid
 global hh
-hh = {1:[1.1,0.2],2:[1.1,0.1],3:[1.03,0.08],4:[1.03,0.22],5:[1.09,0.27],6:[1.15,.13]}
+hh = {1:[1.2,0.2],2:[1.2,0.1],3:[1.2,0.08],4:[1.2,0.22],5:[1.2,0.27],6:[1.2,.13]}
 a = main.battery(5000, "s", 1.1)
 b = main.battery(3000, "s", 1.1)
 d = main.battery(1000, "s", 1.1)
@@ -57,7 +57,7 @@ def sim1(prod, demand, p_nom, soci=[]):
     return ul_hrs, prc_ul, hrs_dsctd
 
 def simyr(eld=elast_d, sd=1, baseline=0):
-    per_lbls = ["ulw", "ulp", "hd", "avg_p", "hh_bill", "hh_rev", "bat_bill", "bat_bill_tot", "p_nom"]
+    per_lbls = ["ulw", "ulp", "hd", "avg_p", "hh_bill", "hh_rev", "bat_bill", "bat_bill_tot", "p_nom", "ult"]
     per_output = dict.fromkeys(per_lbls, [])
     simhrs = len(prod) # Length of each simulation sub-period
     hr = 0
@@ -84,9 +84,10 @@ def simyr(eld=elast_d, sd=1, baseline=0):
         bat_bill_tot = sum(bat_bill) # total billings to/from sbats for one period
 
         # Save outputs. Use "+" for integers, "append" for lists
-        per_output["ulw"] = per_output["ulw"] + [ulw]
-        per_output["ulp"] = per_output["ulp"] + [ulp]
-        per_output["hd"] = per_output["hd"] + [hd]
+        per_output["ulw"] = per_output["ulw"] + [ulw] # Whr of load shed due to low soc
+        per_output["ult"] = per_output["ult"] + [(ulw + float(sum(mg.ulpr)))/sum(dmnd1)] # % of load shed due to low soc + high prices
+        per_output["ulp"] = per_output["ulp"] + [ulp] # % of total load shed due to low soc
+        per_output["hd"] = per_output["hd"] + [hd] # hh-hrs of load shed due to low soc + high prices
         per_output["avg_p"] = per_output["avg_p"] + [p_avg]
         per_output["hh_bill"] = per_output["hh_bill"] + [hh_bill]
         per_output["p_nom"] = per_output["p_nom"] + [p_nom]
@@ -114,7 +115,9 @@ def simyr(eld=elast_d, sd=1, baseline=0):
         hr = hr + hr_max
 
     yr_output = yr_outputs(per_output)
-
+    #j = np.average(demand)
+    #print(j)
+    #print(j*sd)
     #print("% of load unmet for each period:     {}".format(per_output["ulp"]))
     #print("Revenue from hh's for each period:   {}".format(per_output["hh_rev"]))
     #print("Billings to/from slave batteries:    " + str(per_output["bat_bill_tot"]))
@@ -131,17 +134,18 @@ def simyr(eld=elast_d, sd=1, baseline=0):
     return yr_output, per_output
 
 def yr_outputs(per_output):
-    yr_lbls = ["yr_hh_rev", "yr_bat_bill", "yr_rev", "avg_p", 'hd']
+    yr_lbls = ["yr_hh_rev", "yr_bat_bill", "yr_rev", "avg_p", "ulp", "ult"]
     yr_output = dict.fromkeys(yr_lbls, 0)
 
     yr_output[yr_lbls[0]] = sum(per_output["hh_rev"])
     yr_output[yr_lbls[1]] = sum(per_output["bat_bill_tot"])
     yr_output[yr_lbls[2]] = yr_output[yr_lbls[0]] + yr_output[yr_lbls[1]]
     yr_output[yr_lbls[3]] = np.average(per_output["avg_p"])
-    yr_output[yr_lbls[4]] = float(sum(per_output["hd"])) / (8760 * len(hh))
-
+    yr_output[yr_lbls[4]] = np.average(per_output["ulp"])
+    yr_output[yr_lbls[5]] = np.average(per_output["ult"])
+    #print(yr_output[yr_lbls[4]])
     return yr_output
 
 #yr_output, per_output = simyr()
-#print(yr_output["hd"])
+
 
