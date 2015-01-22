@@ -15,7 +15,7 @@ mg = main.control([a,e,c,d,b])
 
 # Inputs - Loads, production, pricing, simulation length
 scale_p = 1
-scale_d = 1.7
+scale_d = 1
 period = 31 # length of simulation in days
 global p_start
 p_start = 1 # Starting price of electricity
@@ -47,12 +47,11 @@ def sim1(prod, demand, p_nom, soci=[]):
 
     return ul_hrs, prc_ul
 
-def simyr(eld):
-    per_lbls = ["ulw", "ulp", "avg_p", "dsctd_hrs", "hh_bill", "hh_rev", "bat_bill", "bat_bill_tot"]
+def simyr(eld=elast_d, sd=1):
+    per_lbls = ["ulw", "ulp", "avg_p", "dsctd_hrs", "hh_bill", "hh_rev", "bat_bill", "bat_bill_tot", "p_nom"]
     per_output = dict.fromkeys(per_lbls, [])
     simhrs = len(prod) # Length of each simulation sub-period
     hr = 0
-    sd = 1
     p_nom = p_start
     soci = []
     for key in per_output.keys(): # not sure why this is needed, but dict builds incorrectly w/o it
@@ -81,6 +80,7 @@ def simyr(eld):
         per_output["avg_p"] = per_output["avg_p"] + [p_avg]
         per_output["dsctd_hrs"].append(mg.hrs_dsctd)
         per_output["hh_bill"] = per_output["hh_bill"] + [hh_bill]
+        per_output["p_nom"] = per_output["p_nom"] + [p_nom]
         per_output["hh_rev"].append(hh_rev)
         per_output["bat_bill"].append(bat_bill)
         per_output["bat_bill_tot"].append(bat_bill_tot)
@@ -88,7 +88,7 @@ def simyr(eld):
         # Set parameters for next simulation period
         # Scale demand and price of electricity
         # Raise price of electricity by (Y * unmet load). If unmet load = 0, lower prices by 10%
-        Y = 2
+        Y = 1
         if ulp > 0:
             p_new = p_nom * min((1 + Y*ulp), 1+p_d_p) # ensure price doesn't change more than allowed
         else:
@@ -97,7 +97,7 @@ def simyr(eld):
         # Assume that demand is reduced proportional to the elasticity of demand
         delta = eld * (p_new - p_nom) / p_nom
         sd = sd + delta
-
+        print(p_nom, p_new, ulp)
         p_nom = p_new
         soci = mg.soc[-1]
         hr = hr + hr_max
@@ -107,10 +107,13 @@ def simyr(eld):
     #print("% of load unmet for each period:     {}".format(per_output["ulp"]))
     #print("Revenue from hh's for each period:   {}".format(per_output["hh_rev"]))
     #print("Billings to/from slave batteries:    " + str(per_output["bat_bill_tot"]))
-    #print("Average price of electricity:        {:0.4f}".format(yr_output["avg_p"]))
+    #print("Average price of electricity:        {}".format(per_output["avg_p"]))
+    #print("Nominal price of electricity:        {}".format(per_output["p_nom"]))
     #print("Annual revenue from house holds:     {:0.0f}".format(yr_output["yr_hh_rev"]))
-    print("Annual revenue/cost (+/-) from bats: {:0.0f}".format(yr_output["yr_bat_bill"]))
-    print("Annual micro-grid revenue:           {:0.0f}".format(yr_output["yr_rev"]))
+    #print("Annual revenue/cost (+/-) from bats: {:0.0f}".format(yr_output["yr_bat_bill"]))
+    #print("Annual micro-grid revenue:           {:0.0f}".format(yr_output["yr_rev"]))
+    #print([per_output["ulp"]])
+    #print([per_output["avg_p"]])
 
     return yr_output, per_output
 
@@ -125,5 +128,5 @@ def yr_outputs(per_output):
 
     return yr_output
 
-#yr_output, per_output = simyr()
+#yr_output, per_output = simyr(-0.69, 2)
 
