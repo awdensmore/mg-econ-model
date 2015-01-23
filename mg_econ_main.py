@@ -253,7 +253,7 @@ class control(battery):
         bal = []
         w_unused_hr = []
         for i in range(simhrs):
-            p = econ.price(p_nom, p_delta, soc[i][0], 1, 0.3)
+            p = p_nom#econ.price(p_nom, p_delta, soc[i][0], 1, 0.3)
             self.p.append(p)
             w_shed, hh_dsctd = self.shed_p(hh_lds, load[i], p)
             ld_new = max(0, load[i] - w_shed) # max() is to catch rounding errors

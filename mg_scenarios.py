@@ -3,14 +3,14 @@ import mgplot as plt
 
 # Potential variables to analyze
 sd = [0.25, 0.5, 1, 1.5, 2] # scale demand
-elds = [-0.2, -0.7, -1.0, -1.5, -2, -3] # elasticity of demand
+elds = [-0.5, -0.7, -0.9, -1.0, -1.2, -1.4] # elasticity of demand
 
 # Choose which variable to analyze
 var = elds
 
 results = []
 for i in range(len(var)):
-    ry, rp = sim.simyr(eld=var[i], sd=0.5)
+    ry, rp = sim.simyr(eld=var[i], sd =0.5)
     results.append(ry)
 
 rplot = [[] for a in results[0]]
@@ -24,7 +24,15 @@ for key in results[0].keys():
 #    print(i)
 
 # Plot
-plt.plot_hd(rplot, var)
-#plt.plot_rev(rplot, var)
+#plt.plot_hd(rplot, var)
+plt.plot_rev(rplot, var)
 plt.show()
+
+# rplot[6] = annual revenue
+# rplot[1] = total unmet load
+
+# Write results to file
+#f = "results.txt"
+#with open(f, mode='a') as rf:
+
 
