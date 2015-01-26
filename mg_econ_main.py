@@ -115,12 +115,13 @@ class battery:
     # Output: new bat soc, total load shed, unmet load (can happen when load demanded by master bat exceeds
     #         this bat's capacity), hh's disconnected
     # Note: unlike in real life, there is no "reconnect" setpoint. Just evaluate energy debt each hr, d/c as needed
-    def shed(self, soc, hh_dsctd, ld_bal, ld_tot, hh_lds, ex_ld=0):
+    def shed(self, soc, hh_dsctd, prod, ld_bal, ld_tot, hh_lds, ex_ld=0):
         if (ld_bal or ex_ld) > 0:
             exit("In shed(): loads must be negative (ld_bal): " + str(ld_bal))
         else:
             load = -ld_bal
         ld_shd_t =  max(0, abs(ld_bal + ex_ld) - ((soc - self.soc_min) * self.size))  # the target load to be shed
+
         if ld_shd_t >= ld_bal:
             hh_shd_pct = 1 # The load shedding required exceeds all hh loads, therefore disconnect all hh's
         else:
@@ -145,8 +146,10 @@ class battery:
 
         bat_ld_unmet = max(0, min(abs(ex_ld), ld_shd_t - ld_shd)) # the amount of master battery load that could not be met
 
-        soc_new = soc + (float((ld_shd + bat_ld_unmet + ld_bal + ex_ld)) / self.size)
-
+        soc_new = soc + (float((ld_shd + prod + bat_ld_unmet + ld_bal + ex_ld)) / self.size)
+        if soc >= 0.95:
+            print(str(soc) + " " + str(soc_new) + " " + str(ld_shd) + " "\
+                    + str(ld_bal) + " " + str(ld_tot) + " " + str(ld_shd_t))
         return soc_new, ld_shd, bat_ld_unmet, hh_dsctd
 
     # Shed any hh's whose bid is less than the current price of electricity
@@ -194,8 +197,24 @@ class battery:
 # Inputs: bats: list of battery objects
 #         order: 0 = lowest to highest, 1 = highest to lowest
 def sbat_sort(sbats, order=0):
+    a = []
+    sbats_ordered = []
+    for b in sbats:
+        a.append(b.bid)
+    a.sort()
+    for abid in a:
+        for bat in sbats:
+            if bat.bid == abid:
+                sbats_ordered.append(bat)
+                break
+    if order == 1:
+        sbats_ordered.reverse()
+    return sbats_ordered
+
+def sbat_sort2(sbats, order=0):
     a = {}
     i = 0
+
     for b in sbats:
         a[b.bid] = b
     bids = a.keys()
@@ -253,7 +272,7 @@ class control(battery):
         bal = []
         w_unused_hr = []
         for i in range(simhrs):
-            p = p_nom#econ.price(p_nom, p_delta, soc[i][0], 1, 0.3)
+            p = econ.price(p_nom, p_delta, soc[i][0], 1, 0.3)
             self.p.append(p)
             w_shed, hh_dsctd = self.shed_p(hh_lds, load[i], p)
             ld_new = max(0, load[i] - w_shed) # max() is to catch rounding errors
@@ -278,7 +297,7 @@ class control(battery):
                     j = j + 1
                 if w_needed > 0: # energy purchasing was insufficient, begin load shedding
                     md = self.mbat.md_types[6]
-                    soc_new_m, ld_shd, blu, hh_dsctd = self.mbat.shed(soc_new_m, hh_dsctd, -ld_new, -load[i], hh_lds) # previously, load = w_needed
+                    soc_new_m, ld_shd, blu, hh_dsctd = self.mbat.shed(soc_new_m, hh_dsctd, prod[i], -ld_new, -load[i], hh_lds) # previously, load = w_needed
                     self.ul.append(ld_shd)
             else: # full, empty, charging and discharging
                 soc_new_m, w_unused = self.mbat.bat_action[md](self.mbat, soc[i][0], bal[i])
@@ -302,6 +321,9 @@ class control(battery):
                         soc_new_s.append(soc[i][j+1])
                         j = j +1
 
+            #if md == "full":
+            #    print(str(i) + " " + str(prod[i]) + " " + str(load[i]) + " " + str(ld_new) \
+            #          + " " + str(p) + " " + str(bal[i]))
             soc_new = [soc_new_m] + soc_new_s
             soc.append(soc_new)
             soc_w.append([a * b for a,b in zip(soc_new, sizes)])
