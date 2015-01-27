@@ -26,7 +26,7 @@ def hh_consumption(hh_info, hh_dsctd, demand):
 
     return hh_load, hh_ul
 
-def price(p_nom, p_delta, soc, soc_max, soc_min):
+def price_hr(p_nom, p_delta, soc, soc_max, soc_min):
     # If current soc exceeds max/min for price calc, set it to max or min so price doesn't
     # exceed threshold
     if soc >= soc_max:
@@ -60,6 +60,9 @@ def price2(p_nom, p_delta, prod, demand):
         p_i = p_nom * (1 - p_delta * (float(b) - b_avg)/(b_avg - b_min))
         p.append(p_i)
     return p
+
+def price_pd(p_nom, p_d_p, ed, hh_bids):
+
 
 # Bill each hh
 # Inputs: the load from each hh. The hourly price of electricity

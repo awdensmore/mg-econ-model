@@ -277,8 +277,8 @@ class control(battery):
             if bl == 1:
                 p = p_nom
             else:
-                soc_mm = min([mb[0] for mb in soc]) # set the soc min pt (that determines max price) to min of prev. soc's
-                p = econ.price(p_nom, p_delta, soc[i][0], 1, soc_mm)
+                soc_mm = min(min([mb[0] for mb in soc]), 0.999) # set the soc min pt (that determines max price) to min of prev. soc's
+                p = econ.price_hr(p_nom, p_delta, soc[i][0], 1, soc_mm)
             self.p.append(p)
             w_shed, hh_dsctd = self.shed_p(hh_lds, load[i], p)
             ld_new = max(0, load[i] - w_shed) # max() is to catch rounding errors

@@ -5,7 +5,7 @@ import econ
 # Inputs - Households and the grid
 global hh, mb_size, b_bid, BL_FLAG
 BL_FLAG = 0
-hh = {1:[1.8,0.2],2:[1.8,0.1],3:[1.8,0.08],4:[1.8,0.22],5:[1.8,0.27],6:[1.8,.13]}
+hh = {1:[1.5,0.2],2:[1.5,0.1],3:[1.5,0.08],4:[1.5,0.22],5:[1.5,0.27],6:[1.5,.13]}
 a = main.battery(7000, "s", 1.15)
 b = main.battery(7000, "s", 1.15)
 d = main.battery(7000, "s", 1.15)
@@ -22,7 +22,7 @@ global p_start
 p_start = 1 # Starting price of electricity
 global p_delta
 p_delta = 0.05 # maximum hourly price change (e.g. +/- 50%)
-p_d_p = 0.05 # max change in price between periods (e.g. +/- 20%)
+#p_d_p = 0.05 # max change in price between periods (e.g. +/- 20%)
 elast_d = -0.7# elasticity of demand (e.g., for 1% increase in price, 0.5% decrease in demand
 prod, demand = main.read_files("production.txt", "demand.txt")
 prod, demand = main.scale(prod, scale_p, demand, scale_d)
@@ -66,6 +66,7 @@ def simyr(eld=elast_d, sd=1, baseline=0):
     simhrs = len(prod) # Length of each simulation sub-period
     hr = 0
     p_nom = p_start
+    p_d_p = 0.035#0.025/abs(eld)
     p_maxa = sum([hh[key][0]*hh[key][1] for key in hh]) # Do not let the price exceed the weighted average of hh bids
     soci = []
     for key in per_output.keys(): # not sure why this is needed, but dict builds incorrectly w/o it
