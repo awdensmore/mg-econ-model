@@ -3,12 +3,13 @@ import numpy as np
 import econ
 
 # Inputs - Households and the grid
-global hh, mb_size, b_bid
-hh = {1:[1.5,0.2],2:[1.5,0.1],3:[1.5,0.08],4:[1.5,0.22],5:[1.5,0.27],6:[1.5,.13]}
-a = main.battery(7000, "s", 1.1)
-b = main.battery(7000, "s", 1.1)
-d = main.battery(7000, "s", 1.1)
-e = main.battery(7000, "s", 1.1)
+global hh, mb_size, b_bid, BL_FLAG
+BL_FLAG = 0
+hh = {1:[1.8,0.2],2:[1.8,0.1],3:[1.8,0.08],4:[1.8,0.22],5:[1.8,0.27],6:[1.8,.13]}
+a = main.battery(7000, "s", 1.15)
+b = main.battery(7000, "s", 1.15)
+d = main.battery(7000, "s", 1.15)
+e = main.battery(7000, "s", 1.15)
 sbats = [a,b,d,e]
 c = main.battery(32000, "m")
 mg = main.control([c,a,b,d,e])
@@ -20,8 +21,8 @@ period = 31 # length of simulation in days
 global p_start
 p_start = 1 # Starting price of electricity
 global p_delta
-p_delta = 0.2 # maximum hourly price change (e.g. +/- 50%)
-p_d_p = 0.1 # max change in price between periods (e.g. +/- 20%)
+p_delta = 0.05 # maximum hourly price change (e.g. +/- 50%)
+p_d_p = 0.05 # max change in price between periods (e.g. +/- 20%)
 elast_d = -0.7# elasticity of demand (e.g., for 1% increase in price, 0.5% decrease in demand
 prod, demand = main.read_files("production.txt", "demand.txt")
 prod, demand = main.scale(prod, scale_p, demand, scale_d)
@@ -34,18 +35,19 @@ hourly_output = dict.fromkeys(hrly_lbls, [])
 #         p_nom - the nominal price of electricity during the simulation period
 #         co - control object
 #         soci - the starting soc of the batteries
+#         bl - baseline flag
 # Outputs: ul_hrs - unmet load hours (Whrs) during the simulation period due to low battery status
 #          prc_ul - unmet load hours as a % of total demand during simulation period
 #          mg.hrs_dsctd - total hrs (hr x # hh) disconnected. Includes disconnection due to low soc OR insufficient bid.
 #                         (i.e. the hh was unwilling to pay the price of electricity at that hr)
-def sim1(prod, demand, p_nom, soci=[]):
+def sim1(prod, demand, p_nom, bl, soci=[]):
     # if it's not the first simulation period, populate soci with previous soc's
     l = len(soci)
     if l > 0:
         for i in range(l):
             mg.batteries[i].soci = soci[i]
 
-    mg.run(prod, demand, hh, p_nom, p_delta)
+    mg.run(prod, demand, hh, p_nom, p_delta, bl)
 
     for key in hourly_output.keys():
         hourly_output[key] = hourly_output[key] + mg.__dict__[key]
@@ -58,14 +60,13 @@ def sim1(prod, demand, p_nom, soci=[]):
     return ul_hrs, prc_ul, hrs_dsctd
 
 def simyr(eld=elast_d, sd=1, baseline=0):
-
     per_lbls = ["ulw", "ulp", "hd", "avg_p", "hh_bill", "hh_rev", "bat_bill", "bat_bill_tot", "p_nom", "ult",\
-                "p_max_min", "socw"]
+                "p_max_min", "socw", "demand"]
     per_output = dict.fromkeys(per_lbls, [])
     simhrs = len(prod) # Length of each simulation sub-period
     hr = 0
     p_nom = p_start
-    p_max = sum([hh[key][0]*hh[key][1] for key in hh]) # Do not let the price exceed the weighted average of hh bids
+    p_maxa = sum([hh[key][0]*hh[key][1] for key in hh]) # Do not let the price exceed the weighted average of hh bids
     soci = []
     for key in per_output.keys(): # not sure why this is needed, but dict builds incorrectly w/o it
         per_output[key] = []
@@ -76,7 +77,7 @@ def simyr(eld=elast_d, sd=1, baseline=0):
         prod1 = prod[hr:hr+hr_max]
         dmnd1 = demand[hr:hr+hr_max]
         prod1, dmnd1 = main.scale(prod1, scale_p, dmnd1, sd)
-        ulw, ulp, hd = sim1(prod1, dmnd1, p_nom, soci)
+        ulw, ulp, hd = sim1(prod1, dmnd1, p_nom, baseline, soci)
 
         # Run economics
         p_avg = np.average(mg.p)
@@ -85,7 +86,7 @@ def simyr(eld=elast_d, sd=1, baseline=0):
         hh_cons, hh_ul = econ.hh_consumption(hh, mg.hh_dsctd, dmnd1)
         hh_bill = econ.hh_billing(hh_cons, mg.p) # Billings to households
         hh_rev = sum(hh_bill.values())
-        bat_bill_hr = econ.sbat_billing(mg.b_net_w[1:], sbats, p_avg) # Billings to/from bats. Charge avg price to recharge
+        bat_bill_hr = econ.sbat_billing(mg.b_net_w[1:], sbats, 1) # Billings to/from bats. Charge avg price to recharge
         bat_bill = [sum(bt) for bt in bat_bill_hr] # list of billings for each sbat for one period
         bat_bill_tot = sum(bat_bill) # total billings to/from sbats for one period
 
@@ -102,6 +103,7 @@ def simyr(eld=elast_d, sd=1, baseline=0):
         per_output["bat_bill_tot"].append(bat_bill_tot)
         per_output["p_max_min"].append([p_max, p_min])
         per_output["socw"] = per_output["socw"] + [mg.soc_w]
+        per_output["demand"] = per_output["demand"] + [sum(dmnd1)]
 
         # Set parameters for next simulation period
         # Scale demand and price of electricity
@@ -110,9 +112,9 @@ def simyr(eld=elast_d, sd=1, baseline=0):
         if ulp > 0:
             p_new = p_nom * min((1 + Y*ulp), 1+p_d_p) # ensure price doesn't change more than allowed
         elif eld < -0.95: # demand is elastic, so decrease price to induce demand (and tf increase revenue)
-            p_new = p_nom * (1 - 0.05)
+            p_new = p_nom * (1 - p_d_p)
         else: # demand is inelastic, so increase price to increase revenue
-            p_new = min(p_nom * (1 + 0.035), p_max)
+            p_new = min(p_nom * (1 + p_d_p), p_maxa)
 
         # Assume that demand is reduced proportional to the elasticity of demand
         delta = eld * (p_new - p_nom) / p_nom
@@ -158,7 +160,7 @@ def yr_outputs(per_output):
     pmax = [a[0] for a in per_output["p_max_min"]]
     pmin = [a[1] for a in per_output["p_max_min"]]
     yr_output[yr_lbls[6]] = [max(pmax), min(pmin)]
-    #print(yr_output[yr_lbls[6]])
+    print(yr_output[yr_lbls[6]])
     return yr_output
 
-#yr_output, per_output = simyr()
+

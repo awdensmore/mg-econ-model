@@ -5,6 +5,7 @@
 from __future__ import print_function
 import math
 import econ
+import mg_simulation as mgs
 
 def read_file(f_open):
     output = []
@@ -247,8 +248,9 @@ class control(battery):
     #         load - matrix of the hourly load on each bat (ie [[bat1, bat2,..., batx], ...hrx])
     #         hh_lds - dict describing hh loads (ie {1:[bid, ld %], ...hhx})
     #         price = list of the hourly price of electricity
+    #         bl - baseline flag
     # Notes:  1)
-    def run(self, prod, load, hh_lds, p_nom, p_delta):
+    def run(self, prod, load, hh_lds, p_nom, p_delta, bl):
         if len(prod) - len(load) != 0:
             exit("simhrs don't match")
         else:
@@ -272,7 +274,11 @@ class control(battery):
         bal = []
         w_unused_hr = []
         for i in range(simhrs):
-            p = econ.price(p_nom, p_delta, soc[i][0], 1, 0.3)
+            if bl == 1:
+                p = p_nom
+            else:
+                soc_mm = min([mb[0] for mb in soc]) # set the soc min pt (that determines max price) to min of prev. soc's
+                p = econ.price(p_nom, p_delta, soc[i][0], 1, soc_mm)
             self.p.append(p)
             w_shed, hh_dsctd = self.shed_p(hh_lds, load[i], p)
             ld_new = max(0, load[i] - w_shed) # max() is to catch rounding errors
@@ -336,7 +342,8 @@ class control(battery):
         for i in range(len(soc_w[0])):
             net_w.append([])
             j = 0
-            while j < (len(soc_w) - 1):
+            b_num = len(soc_w) - 1
+            while j < b_num:
                 w = soc_w[j+1][i] - soc_w[j][i]
                 net_w[i].append(w)
                 j = j+1

@@ -34,7 +34,7 @@ def price(p_nom, p_delta, soc, soc_max, soc_min):
     elif soc <= soc_min:
         soc = soc_min
 
-    soc_avg = (soc_max + soc_min) / 2
+    soc_avg = float(soc_max + soc_min) / 2
     p = p_nom * (1 - p_delta * (float(soc) - soc_avg)/(soc_avg - soc_min))
 
     return p

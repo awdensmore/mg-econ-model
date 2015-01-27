@@ -1,4 +1,5 @@
 import mg_simulation as sim
+import numpy as np
 import mgplot as plt
 import os
 
@@ -12,7 +13,7 @@ var = sd
 results = []
 per_results = []
 for i in range(len(var)):
-    ry, rp = sim.simyr(sd=var[i])
+    ry, rp = sim.simyr(sd=var[i], baseline=1)
     results.append(ry)
     per_results.append(rp)
 
@@ -23,6 +24,11 @@ for key in results[0].keys():
         rplot[i].append(results[j][key])
     i = i + 1
 
+#print(rp["demand"])
+#print(rp["hh_rev"])
+#print(rp["avg_p"])
+#print(rp["p_nom"])
+#print(np.average(sim.hourly_output["soc"]))
 #for i in rplot:
 #    print(i)
 
@@ -31,8 +37,8 @@ for key in results[0].keys():
 revenue = rplot[6]
 unmet_load = [ a * 100 for a in rplot[2]]
 #print(sim.hourly_output["soc_w"])
-print(revenue)
-print(unmet_load)
+print("Revenue:    " + str(revenue))
+print("Unmet Load: " + str(unmet_load))
 
 # Plot
 #plt.plot_pd(sim.prod, [a *2 for a in sim.demand])
