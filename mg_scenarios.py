@@ -5,7 +5,7 @@ import os
 
 # Potential variables to analyze
 sd = [0.25, 0.5, 0.75, 1, 1.5, 2, 3] # scale demand
-elds = -0.7 #[-0.2, -0.4, -0.7, -0.9, -1, -1.25, -1.5] # elasticity of demand
+elds = -0.9 #[-0.2, -0.4, -0.7, -0.9, -1, -1.25, -1.5] # elasticity of demand
 
 # Choose which variable to analyze
 var = sd
@@ -13,7 +13,7 @@ var = sd
 results = []
 per_results = []
 for i in range(len(var)):
-    ry, rp = sim.simyr(eld=elds, sd=var[i])
+    ry, rp = sim.simyr(sd=var[i], eld=elds)
     results.append(ry)
     per_results.append(rp)
 
@@ -50,11 +50,11 @@ def save_to_file():
     with open(f, mode='a') as rf:
         rf.write(record)
 
-#save_to_file()
+save_to_file()
 
 # Plot
 #plt.plot_pd(sim.prod, [a *2 for a in sim.demand])
-#plt.plot_hd(rplot, var)
-#plt.plot_rev(rplot, var)
+plt.plot_hd(rplot, sd, elds)
+#plt.plot_rev(rplot, sd, elds)
 #plt.plot_socw(sim.hourly_output["soc_w"][43800:52560])
-#plt.show()
+plt.show()

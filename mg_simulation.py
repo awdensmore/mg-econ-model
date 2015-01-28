@@ -22,7 +22,7 @@ period = 31 # length of simulation in days
 global p_start
 p_start = 1 # Starting price of electricity
 global p_delta
-p_delta = 0.05 # maximum hourly price change (e.g. +/- 50%)
+p_delta = 0.005 # maximum hourly price change (e.g. +/- 50%)
 #p_d_p = 0.05 # max change in price between periods (e.g. +/- 20%)
 elast_d = -0.7# elasticity of demand (e.g., for 1% increase in price, 0.5% decrease in demand
 prod, demand = main.read_files("production.txt", "demand.txt")
@@ -152,5 +152,5 @@ def yr_outputs(per_output):
     pmax = [a[0] for a in per_output["p_max_min"]]
     pmin = [a[1] for a in per_output["p_max_min"]]
     yr_output[yr_lbls[6]] = [max(pmax), min(pmin)]
-    print(yr_output[yr_lbls[6]])
+    print(yr_output[yr_lbls[6]], yr_output[yr_lbls[3]])
     return yr_output
