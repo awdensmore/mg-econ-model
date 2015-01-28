@@ -26,18 +26,21 @@ def hh_consumption(hh_info, hh_dsctd, demand):
 
     return hh_load, hh_ul
 
-def price_hr(p_nom, p_delta, soc, soc_max, soc_min):
-    # If current soc exceeds max/min for price calc, set it to max or min so price doesn't
-    # exceed threshold
-    if soc >= soc_max:
-        soc = soc_max
-    elif soc <= soc_min:
-        soc = soc_min
+def price_hr(p_nom, p_delta, soc, soc_min):
 
-    soc_avg = float(soc_max + soc_min) / 2
-    p = p_nom * (1 - p_delta * (float(soc) - soc_avg)/(soc_avg - soc_min))
+    psoc_min = min([b[0] for b in soc]) # min soc from previous hours
+    socm = max(psoc_min, soc_min)
+    d = 1 - min(0.999, socm)
+    n = 1 - soc[-1][0]
 
-    return p
+    #print(n,d)
+    p_nom_new = p_nom * (1 + p_delta * min(1, (float(n) / d)))
+
+    return p_nom_new
+
+#a = price_hr(1, 0.5, [[0.75, .5, .5], [0.7, .5, .5], [0.65, .5, .5], [0.6, .5, .5] , [0.3, .5, .5],\
+#                      [0.55, .5, .5], [0.75, .5, .5], [0.3, .5, .5]], 0.4)
+#print(a)
 
 # Determine the hourly consumer price of electricity
 # Inputs: p_nom - nominal price of electricity, i.e. when production and supply are equal
@@ -61,8 +64,35 @@ def price2(p_nom, p_delta, prod, demand):
         p.append(p_i)
     return p
 
-def price_pd(p_nom, p_d_p, ed, hh_bids):
+# Determine the change in price between simulation periods
+# Inputs: p_nom - current nominal price
+#         ulp - unmet load percentage
+#         p_d_p - max
+#         ed - elasticity of demand
+#         p_max - weighted average of maximum price each hh is willing to pay
+def price_pd(p_nom, sd, ulp, periods, ed, p_max):
+        if ed == -1:
+            p_d_p = 0
+        elif ed < -1:
+            p_d_p = 0.05 * (ed - -1)
+        elif ed >-1:
+            p_d_p = np.power(p_max, float(1)/periods) - 1
 
+        Y = 1
+        if ulp > 0:
+            p_new = p_nom * min((1 + Y*ulp), 1.1) # ensure price doesn't change more than allowed
+        else:
+            p_new = min(p_nom * (1 + p_d_p), p_max)
+
+        # Assume that demand is reduced proportional to the elasticity of demand
+        delta = ed * (p_new - p_nom) / p_nom
+
+        sd_new = sd * (1 + delta)
+
+        return p_new, sd_new
+
+#xyz, b = price_pd(1, 1, 0, 12, -1.25, 1.8)
+#print(xyz, b)
 
 # Bill each hh
 # Inputs: the load from each hh. The hourly price of electricity

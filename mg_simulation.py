@@ -1,5 +1,6 @@
 import mg_econ_main as main
 import numpy as np
+import math
 import econ
 
 # Inputs - Households and the grid
@@ -66,7 +67,7 @@ def simyr(eld=elast_d, sd=1, baseline=0):
     simhrs = len(prod) # Length of each simulation sub-period
     hr = 0
     p_nom = p_start
-    p_d_p = 0.035#0.025/abs(eld)
+    #p_d_p = 0.035#0.025/abs(eld)
     p_maxa = sum([hh[key][0]*hh[key][1] for key in hh]) # Do not let the price exceed the weighted average of hh bids
     soci = []
     for key in per_output.keys(): # not sure why this is needed, but dict builds incorrectly w/o it
@@ -109,20 +110,10 @@ def simyr(eld=elast_d, sd=1, baseline=0):
         # Set parameters for next simulation period
         # Scale demand and price of electricity
         # Raise price of electricity by (Y * unmet load).
-        Y = 1
-        if ulp > 0:
-            p_new = p_nom * min((1 + Y*ulp), 1+p_d_p) # ensure price doesn't change more than allowed
-        elif eld < -0.95: # demand is elastic, so decrease price to induce demand (and tf increase revenue)
-            p_new = p_nom * (1 - p_d_p)
-        else: # demand is inelastic, so increase price to increase revenue
-            p_new = min(p_nom * (1 + p_d_p), p_maxa)
-
-        # Assume that demand is reduced proportional to the elasticity of demand
-        delta = eld * (p_new - p_nom) / p_nom
-
         if baseline ==0:
-            sd = sd * (1 + delta)
-            p_nom = p_new
+            p_nom, sd = econ.price_pd(p_nom, sd, ulp, math.ceil(365/period), eld, p_maxa)
+            #print(p_nom, sd)
+
         #print(p_nom, p_new, ulp)
 
         soci = mg.soc[-1]
@@ -163,5 +154,3 @@ def yr_outputs(per_output):
     yr_output[yr_lbls[6]] = [max(pmax), min(pmin)]
     print(yr_output[yr_lbls[6]])
     return yr_output
-
-

@@ -5,7 +5,7 @@ import os
 
 # Potential variables to analyze
 sd = [0.25, 0.5, 0.75, 1, 1.5, 2, 3] # scale demand
-elds = -1 #[-0.2, -0.4, -0.7, -0.9, -1, -1.25, -1.5] # elasticity of demand
+elds = -0.7 #[-0.2, -0.4, -0.7, -0.9, -1, -1.25, -1.5] # elasticity of demand
 
 # Choose which variable to analyze
 var = sd
