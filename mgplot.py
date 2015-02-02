@@ -36,6 +36,12 @@ def plot_socw(socw, bal=[]):
         ax2 = ax.twinx()
         ax2.plot(hrs, bal, 'k--')
 
+def plot_soc(soc):
+    hrs = range(len(soc))
+    plt.xlabel("Simulation Hours")
+    plt.ylabel("Battery State of Charge (%)")
+    plt.plot(hrs, soc)
+
 def plot_prices(prc, bal=[]):
     hrs = range(len(prc))
     fig, ax = plt.subplots()
@@ -152,18 +158,18 @@ def plot_scatter(results):
             p.append(a)
 
     plt.xlabel("% change in unmet load vs. baseline")
-    plt.ylabel("& change in revenue vs. baseline")
+    plt.ylabel("% change in revenue vs. baseline")
     plt.legend([p[0], p[7], p[14], p[21], p[28], p[35], p[42],\
                 p[0], p[1], p[2], p[3], p[4], p[5], p[6]],\
                ['-0.2e', '-0.4e','-0.7e', '-0.9e', '-1e', '-1.25e', '-1.5e', \
-                '1/4d', '1/2d', '3/4d', 'd', '1.5d', '2d', '3d'], loc=(1.05,0.05))
+                '1/4d', '1/2d', '3/4d', 'd', '1.5d', '2d', '3d'], loc=(1.005,0.05))
     plt.axis([-7,7,-5,20])
     plt.show()
 
-a = import_data("results.txt")
+"""a = import_data("results.txt")
 b = results_diff(a)
 print(b)
 plot_scatter(b)
-
+"""
 def show():
     plt.show()
