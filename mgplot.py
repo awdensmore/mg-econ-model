@@ -166,10 +166,10 @@ def plot_scatter(results):
     plt.axis([-7,7,-5,20])
     plt.show()
 
-"""a = import_data("results.txt")
+a = import_data("results.txt")
 b = results_diff(a)
 print(b)
 plot_scatter(b)
-"""
+
 def show():
     plt.show()

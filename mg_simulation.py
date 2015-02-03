@@ -7,10 +7,10 @@ import econ
 global hh, mb_size, b_bid, BL_FLAG
 BL_FLAG = 0
 hh = {1:[1.5,0.2],2:[1.5,0.1],3:[1.5,0.08],4:[1.5,0.22],5:[1.5,0.27],6:[1.5,.13]}
-a = main.battery(7000, "s", 1.15)
-b = main.battery(7000, "s", 1.15)
-d = main.battery(7000, "s", 1.15)
-e = main.battery(7000, "s", 1.15)
+a = main.battery(7000, "s", 1.5)
+b = main.battery(7000, "s", 1.5)
+d = main.battery(7000, "s", 1.5)
+e = main.battery(7000, "s", 1.5)
 sbats = [a,b,d,e]
 c = main.battery(32000, "m")
 mg = main.control([c,a,b,d,e])
@@ -61,7 +61,7 @@ def sim1(prod, demand, p_nom, bl, soci=[]):
     return ul_hrs, prc_ul, hrs_dsctd
 
 def simyr(eld=elast_d, sd=1, baseline=0):
-    per_lbls = ["ulw", "ulp", "hd", "avg_p", "hh_bill", "hh_rev", "bat_bill", "bat_bill_tot", "p_nom", "ult",\
+    per_lbls = ["ulw", "ulp", "hd", "avg_p", "hh_bill", "hh_rev", "bat_bill", "bat_bill_tot", "bat_net_w", "p_nom", "ult",\
                 "p_max_min", "socw", "demand"]
     per_output = dict.fromkeys(per_lbls, [])
     simhrs = len(prod) # Length of each simulation sub-period
@@ -88,7 +88,7 @@ def simyr(eld=elast_d, sd=1, baseline=0):
         hh_cons, hh_ul = econ.hh_consumption(hh, mg.hh_dsctd, dmnd1)
         hh_bill = econ.hh_billing(hh_cons, mg.p) # Billings to households
         hh_rev = sum(hh_bill.values())
-        bat_bill_hr = econ.sbat_billing(mg.b_net_w[1:], sbats, 1) # Billings to/from bats. Charge avg price to recharge
+        bat_bill_hr = econ.sbat_billing(mg.b_net_w[1:], sbats, 0.75) # Billings to/from bats. Charge wholesale to recharge
         bat_bill = [sum(bt) for bt in bat_bill_hr] # list of billings for each sbat for one period
         bat_bill_tot = sum(bat_bill) # total billings to/from sbats for one period
 
@@ -103,6 +103,7 @@ def simyr(eld=elast_d, sd=1, baseline=0):
         per_output["hh_rev"].append(hh_rev)
         per_output["bat_bill"].append(bat_bill)
         per_output["bat_bill_tot"].append(bat_bill_tot)
+        per_output["bat_net_w"].append([sum(a) for a in mg.b_net_w[1:]]) # Net watts for each battery during the period
         per_output["p_max_min"].append([p_max, p_min])
         per_output["socw"] = per_output["socw"] + [mg.soc_w]
         per_output["demand"] = per_output["demand"] + [sum(dmnd1)]
@@ -140,7 +141,7 @@ def simyr(eld=elast_d, sd=1, baseline=0):
     return yr_output, per_output
 
 def yr_outputs(per_output):
-    yr_lbls = ["yr_hh_rev", "yr_bat_bill", "yr_rev", "avg_p", "ulp", "ult", "p_max_min"]
+    yr_lbls = ["yr_hh_rev", "yr_bat_bill", "yr_rev", "avg_p", "ulp", "ult", "p_max_min", "bat_net_w"]
     yr_output = dict.fromkeys(yr_lbls, 0)
 
     yr_output[yr_lbls[0]] = sum(per_output["hh_rev"])
@@ -152,5 +153,7 @@ def yr_outputs(per_output):
     pmax = [a[0] for a in per_output["p_max_min"]]
     pmin = [a[1] for a in per_output["p_max_min"]]
     yr_output[yr_lbls[6]] = [max(pmax), min(pmin)]
+    yr_output[yr_lbls[7]] = sum([sum(a) for a in per_output["bat_net_w"]])
+    #print(yr_output[yr_lbls[7]])
     print(yr_output[yr_lbls[6]], yr_output[yr_lbls[3]])
     return yr_output
